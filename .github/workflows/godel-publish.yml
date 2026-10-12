@@ -1,0 +1,27 @@
+# DL-Software fork: test and publish swagger-parser-v3 (and the modules it needs) to GitHub Packages
+# when a `v<upstream version>-godel.<n>` tag is pushed. See GODEL.md.
+name: Publish (Godel fork)
+
+on:
+  push:
+    tags: ["v*-godel.*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+          server-id: github
+      - name: Test and deploy
+        run: mvn -B -pl modules/swagger-parser-v3 -am deploy
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

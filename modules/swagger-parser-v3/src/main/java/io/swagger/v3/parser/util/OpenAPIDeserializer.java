@@ -78,6 +78,9 @@ import static java.util.Collections.emptySet;
 
 public class OpenAPIDeserializer {
 
+	/** Whether the document is OpenAPI 3.2, which is read with the 3.1 model and the 3.2 keys. */
+	private boolean openapi32;
+
 	protected static Set<String> JSON_SCHEMA_2020_12_TYPES = new LinkedHashSet<>(Arrays.asList("null", "boolean",
 			"object", "array", "number", "string", "integer"));
 
@@ -255,6 +258,27 @@ public class OpenAPIDeserializer {
 		KEYS.put("openapi30", keys30);
 		KEYS.put("openapi31", keys31);
 
+		// OpenAPI 3.2 is read with the 3.1 model, which has no place for 3.2's new members. Those that only
+		// describe (streamed items, tag navigation, summaries, example values) are accepted and left out of the
+		// result. Those whose loss would change what the document means (`$self`, `query`,
+		// `additionalOperations`, `mediaTypes`, the new OAuth members) are still reported as unexpected.
+		Map<String, Set<String>> keys32 = new LinkedHashMap<>();
+		for (Map.Entry<String, Set<String>> entry : keys31.entrySet()) {
+			keys32.put(entry.getKey(), new LinkedHashSet<>(entry.getValue()));
+		}
+		keys32.get("TAG_KEYS").addAll(Arrays.asList("summary", "parent", "kind"));
+		keys32.get("MEDIATYPE_KEYS").addAll(Arrays.asList("itemSchema", "itemEncoding", "prefixEncoding"));
+		keys32.get("ENCODING_KEYS").addAll(Arrays.asList("itemEncoding", "prefixEncoding"));
+		keys32.get("RESPONSE_KEYS").add("summary");
+		keys32.get("SERVER_KEYS").add("name");
+		keys32.get("SECURITY_SCHEME_KEYS").add("deprecated");
+		keys32.get("EXAMPLE_KEYS").addAll(Arrays.asList("dataValue", "serializedValue"));
+		KEYS.put("openapi32", keys32);
+
+	}
+
+	private Map<String, Set<String>> specKeys(ParseResult result) {
+		return KEYS.get(openapi32 ? "openapi32" : result.isOpenapi31() ? "openapi31" : "openapi30");
 	}
 
 	private static final String QUERY_PARAMETER = "query";
@@ -331,13 +355,14 @@ public class OpenAPIDeserializer {
 			String value = getString("openapi", rootNode, true, location, result);
 
 			// we don't even try if the version isn't there
-			if (value == null || (!value.startsWith("3.0") && !value.startsWith("3.1"))) {
+			if (value == null || (!value.startsWith("3.0") && !value.startsWith("3.1") && !value.startsWith("3.2"))) {
 				return null;
-			} else if (value.startsWith("3.1")) {
+			} else if (value.startsWith("3.1") || value.startsWith("3.2")) {
+				openapi32 = value.startsWith("3.2");
 				result.openapi31(true);
                 openAPI.setSpecVersion(SpecVersion.V31);
 			}
-            if (!value.startsWith("3.0.") && !value.startsWith("3.1.")){
+            if (!value.startsWith("3.0.") && !value.startsWith("3.1.") && !value.startsWith("3.2.")){
                 result.warning(location, "The provided definition does not specify a valid version field");
             }
             openAPI.setOpenapi(value);
@@ -442,7 +467,7 @@ public class OpenAPIDeserializer {
 			}
 
 			Set<String> keys = getKeys(rootNode);
-			Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+			Map<String, Set<String>> specKeys = specKeys(result);
 			for (String key : keys) {
 				if (!specKeys.get("ROOT_KEYS").contains(key) && !key.startsWith("x-")) {
 					result.extra(location, key, node.get(key));
@@ -594,7 +619,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("COMPONENTS_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -658,7 +683,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("TAG_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -751,7 +776,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("SERVER_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -830,7 +855,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("SERVER_VARIABLE_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -1105,7 +1130,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("PATHITEM_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -1139,7 +1164,7 @@ public class OpenAPIDeserializer {
 			}
 
 			Set<String> keys = getKeys(node);
-			Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+			Map<String, Set<String>> specKeys = specKeys(result);
 			for (String key : keys) {
 				if (!specKeys.get("EXTERNAL_DOCS_KEYS").contains(key) && !key.startsWith("x-")) {
 					result.extra(location, key, node.get(key));
@@ -1305,7 +1330,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("INFO_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -1359,7 +1384,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("LICENSE_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -1402,7 +1427,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("CONTACT_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -1486,7 +1511,7 @@ public class OpenAPIDeserializer {
 
 
 		Set<String> keys = getKeys(contentNode);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("MEDIATYPE_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, contentNode.get(key));
@@ -1564,7 +1589,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("ENCODING_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -1681,7 +1706,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(linkNode);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("LINK_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, linkNode.get(key));
@@ -1814,7 +1839,7 @@ public class OpenAPIDeserializer {
 
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("XML_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -2152,7 +2177,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("PARAMETER_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -2295,7 +2320,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> oAuthFlowKeys = getKeys(headerNode);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : oAuthFlowKeys) {
 			if (!specKeys.get("HEADER_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, headerNode.get(key));
@@ -2477,7 +2502,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> securitySchemeKeys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : securitySchemeKeys) {
 			if (!specKeys.get("SECURITY_SCHEME_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -2520,7 +2545,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> oAuthFlowKeys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : oAuthFlowKeys) {
 			if (!specKeys.get("OAUTHFLOWS_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -2589,7 +2614,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> oAuthFlowKeys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : oAuthFlowKeys) {
 			if (!specKeys.get("OAUTHFLOW_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -3383,7 +3408,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("EXAMPLE_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -3526,7 +3551,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("RESPONSE_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
@@ -3634,7 +3659,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(obj);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("OPERATION_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, obj.get(key));
@@ -3773,7 +3798,7 @@ public class OpenAPIDeserializer {
 		}
 
 		Set<String> keys = getKeys(node);
-		Map<String, Set<String>> specKeys = KEYS.get(result.isOpenapi31() ? "openapi31" : "openapi30");
+		Map<String, Set<String>> specKeys = specKeys(result);
 		for (String key : keys) {
 			if (!specKeys.get("REQUEST_BODY_KEYS").contains(key) && !key.startsWith("x-")) {
 				result.extra(location, key, node.get(key));
