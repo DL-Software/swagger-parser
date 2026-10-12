@@ -18,3 +18,5 @@ openapi-generator 7.20.0), plus:
 
 Retire the fork when a swagger-parser release reads 3.2 and openapi-generator ships it.
 To move to another upstream version: branch from its tag, re-apply 1 and 2, `mvn versions:set`, tag.
+
+`2.1.37-godel.1` is a partial publish (a flaky upstream test failed after three modules had uploaded; versions are immutable). Don't use it; `2.1.37-godel.2` is the first complete one.

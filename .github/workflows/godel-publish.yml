@@ -22,6 +22,7 @@ jobs:
           cache: maven
           server-id: github
       - name: Test and deploy
-        run: mvn -B -pl modules/swagger-parser-v3 -am deploy
+        # deployAtEnd: nothing is uploaded unless every module builds and passes (versions are immutable).
+        run: mvn -B -pl modules/swagger-parser-v3 -am deploy -DdeployAtEnd=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
